@@ -42,7 +42,7 @@ class FeaturePair(val wordWidth: Int) extends Module {
 }
 
 class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val busWidth: Int, val wordWidth: Int,
-                       val metricWidth: Int) extends Module {
+                       val numWordsPerGroup: Int, val metricWidth: Int, val skipZeroMems: Boolean) extends Module {
   val io = IO(new Bundle {
     val inputMemAddr = Output(UInt(64.W))
     val inputMemAddrValid = Output(Bool())
@@ -63,22 +63,40 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
     val finished = Output(Bool())
   })
 
-  val featuresPerGroup = (busWidth - metricWidth) / wordWidth / 2
-  val numFeaturePairs = featuresPerGroup * featuresPerGroup
+  val numFeaturePairs = numWordsPerGroup * numWordsPerGroup
   val numOutputWords = numFeaturePairs * (1 << (2 * wordWidth))
   val numOutputLines = (numOutputWords * 64 + busWidth - 1) / busWidth
 
-  val featurePairs = new Array[FeaturePair](numFeaturePairs)
-  for (i <- 0 until numFeaturePairs) {
-    featurePairs(i) = Module(new FeaturePair(wordWidth))
-  }
-
   val zeroMems :: inputLengthAddr :: loadInputLength :: mainLoop :: writeOutput :: finished :: Nil = Enum(6)
-  val state = RegInit(zeroMems)
+  val state = RegInit(if (skipZeroMems) inputLengthAddr else zeroMems)
+  val zeroMemsCounter = RegInit(0.asUInt(log2Ceil(numOutputWords).W))
   val inputLength = Reg(UInt(32.W))
   val inputAddrLineCount = RegInit(0.asUInt(32.W))
   val inputDataLineCount = RegInit(0.asUInt(32.W))
   val outputLineCount = RegInit(0.asUInt(32.W))
+
+  val featurePairs = new Array[FeaturePair](numFeaturePairs)
+  for (i <- 0 until numWordsPerGroup) {
+    for (j <- 0 until numWordsPerGroup) {
+      val linearIndex = i * numOutputWords + j
+      val featurePair = Module(new FeaturePair(wordWidth))
+      featurePairs(linearIndex) = featurePair
+      featurePair.io.inputMetric := io.inputMemBlock(metricWidth - 1, 0)
+      featurePair.io.inputFeatureOne :=
+        io.inputMemBlock((i + 1) * wordWidth - 1 + metricWidth, i * wordWidth + metricWidth)
+      featurePair.io.inputFeatureTwo :=
+        io.inputMemBlock((j + 1 + numWordsPerGroup) * wordWidth - 1 + metricWidth,
+          (j + numWordsPerGroup) * wordWidth + metricWidth)
+      featurePair.io.inputValid := io.inputMemBlockValid && state === mainLoop
+      if (linearIndex == 0) {
+        featurePair.io.neighborOutputIn := 0.U
+      } else {
+        featurePair.io.neighborOutputIn := featurePairs(linearIndex - 1).io.output
+      }
+      featurePair.io.shiftMode := state === zeroMems
+      featurePair.io.doShift := state === zeroMems
+    }
+  }
 
   io.inputMemAddr := inputStartAddr.U
   io.inputMemAddrValid := state === inputLengthAddr
@@ -87,6 +105,13 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   io.outputMemAddrLen := 0.U
   io.outputMemAddrId := 0.U
   switch (state) {
+    is (zeroMems) {
+      when (zeroMemsCounter === (numOutputWords - 1).U) {
+        state := inputLengthAddr
+      } .otherwise {
+        zeroMemsCounter := zeroMemsCounter + 1.U
+      }
+    }
     is (inputLengthAddr) {
       when (io.inputMemAddrReady) {
         state := loadInputLength
@@ -103,5 +128,5 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
 
 object StreamingWrapper extends App {
   chisel3.Driver.execute(args, () => new StreamingWrapper(0, 1000000000, 512,
-    4, 32))
+    4, 40, 32, true))
 }
