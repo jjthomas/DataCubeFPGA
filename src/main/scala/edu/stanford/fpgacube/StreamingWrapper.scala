@@ -63,17 +63,22 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
     val finished = Output(Bool())
   })
 
+  assert(busWidth >= 64)
   val numFeaturePairs = numWordsPerGroup * numWordsPerGroup
   val numOutputWords = numFeaturePairs * (1 << (2 * wordWidth))
   val numOutputLines = (numOutputWords * 64 + busWidth - 1) / busWidth
 
   val zeroMems :: inputLengthAddr :: loadInputLength :: mainLoop :: writeOutput :: finished :: Nil = Enum(6)
-  val state = RegInit(if (skipZeroMems) inputLengthAddr else zeroMems)
+  val state = RegInit(if (skipZeroMems) inputLengthAddr else zeroMems) // zeroMems not needed if RAMs are 0-initialized
   val zeroMemsCounter = RegInit(0.asUInt(log2Ceil(numOutputWords).W))
   val inputLength = Reg(UInt(32.W))
   val inputAddrLineCount = RegInit(0.asUInt(32.W))
   val inputDataLineCount = RegInit(0.asUInt(32.W))
-  val outputLineCount = RegInit(0.asUInt(32.W))
+  val sendingAddr :: fillingLine :: sendingLine :: Nil = Enum(3)
+  val outputState = RegInit(sendingAddr)
+  val outputWordCounter = RegInit(0.asUInt(log2Ceil(numOutputWords).W))
+  val outputLine = Reg(Vec(busWidth / 64, UInt(64.W)))
+
 
   val featurePairs = new Array[FeaturePair](numFeaturePairs)
   for (i <- 0 until numWordsPerGroup) {
@@ -99,11 +104,17 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   }
 
   io.inputMemAddr := inputStartAddr.U
-  io.inputMemAddrValid := state === inputLengthAddr
+  io.inputMemAddrValid := state === inputLengthAddr || (state === mainLoop && inputAddrLineCount =/= inputLength)
   io.inputMemAddrLen := 0.U
-  io.inputMemBlockReady := state === loadInputLength
+  io.inputMemBlockReady := state === loadInputLength || state === mainLoop
+  io.outputMemAddr := (outputWordCounter >> 3).asUInt() + outputStartAddr.U
+  io.outputMemAddrValid := state === writeOutput && outputState === sendingAddr
   io.outputMemAddrLen := 0.U
   io.outputMemAddrId := 0.U
+  io.outputMemBlock := outputLine.asUInt()
+  io.outputMemBlockValid := state === writeOutput && outputState === sendingLine
+  io.outputMemBlockLast := true.B
+  io.finished := state === finished
   switch (state) {
     is (zeroMems) {
       when (zeroMemsCounter === (numOutputWords - 1).U) {
@@ -121,6 +132,58 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
       when (io.inputMemBlockValid) {
         inputLength := io.inputMemBlock
         state := mainLoop
+      }
+    }
+    is (mainLoop) {
+      io.inputMemAddr := (inputAddrLineCount << log2Ceil(busWidth / 8)).asUInt() +
+        (inputStartAddr + busWidth / 8).U // final term is start offset of main data stream
+      val remainingAddrLines = WireInit(inputLength - inputAddrLineCount)
+      io.inputMemAddrLen := Mux(remainingAddrLines > 63.U, 63.U, remainingAddrLines - 1.U)
+      when (io.inputMemAddrReady) {
+        inputAddrLineCount := Mux(remainingAddrLines > 63.U, inputAddrLineCount + 64.U, inputLength)
+      }
+      when (io.inputMemBlockValid) {
+        inputDataLineCount := inputDataLineCount + 1.U
+        when (inputDataLineCount === (inputLength - 1.U)) {
+          state := writeOutput
+        }
+      }
+    }
+    is (writeOutput) {
+      for (i <- 0 until numFeaturePairs) {
+        featurePairs(i).io.shiftMode := true.B
+      }
+      switch (outputState) {
+        is (sendingAddr) {
+          when (io.outputMemAddrReady) {
+            outputState := fillingLine
+          }
+        }
+        is (fillingLine) {
+          for (i <- 0 until numFeaturePairs) {
+            featurePairs(i).io.doShift := true.B
+          }
+          outputLine(busWidth / 64 - 1) := featurePairs(numFeaturePairs - 1).io.output
+          for (i <- 0 until busWidth / 64 - 1) {
+            outputLine(i) := outputLine(i + 1)
+          }
+          val wordInLine = if (busWidth == 64) 0.U else outputWordCounter(log2Ceil(busWidth / 64) - 1, 0)
+          when (wordInLine === (busWidth / 64 - 1).U || outputWordCounter === (numOutputWords - 1).U) {
+            outputState := sendingLine
+          }
+          when (outputWordCounter =/= (numOutputWords - 1).U) {
+            outputWordCounter := outputWordCounter + 1.U
+          }
+        }
+        is (sendingLine) {
+          when (io.outputMemBlockReady) {
+            when (outputWordCounter === (numOutputWords - 1).U) {
+              state := finished
+            } .otherwise {
+              outputState := sendingAddr
+            }
+          }
+        }
       }
     }
   }
