@@ -1,9 +1,9 @@
 package edu.stanford.fpgacube
 
 import chisel3._
-import chisel3.core.Bundle
-import chisel3.util.HasBlackBoxInline
+import chisel3.util._
 
+// a is read port, b is write port
 class DualPortBRAMIO(val dataWidth: Int, val addrWidth: Int) extends Bundle {
   val a_addr = Input(UInt(addrWidth.W))
   val a_dout = Output(UInt(dataWidth.W))
@@ -11,7 +11,7 @@ class DualPortBRAMIO(val dataWidth: Int, val addrWidth: Int) extends Bundle {
   val b_din = Input(UInt(dataWidth.W))
   val b_wr = Input(Bool())
 }
-// a is read port, b is write port
+
 class DualPortBRAM(dataWidth: Int, addrWidth: Int) extends Module {
   val io = IO(new DualPortBRAMIO(dataWidth, addrWidth))
 
