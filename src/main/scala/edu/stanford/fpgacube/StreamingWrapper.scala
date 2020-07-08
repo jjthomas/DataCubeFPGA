@@ -28,9 +28,8 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   assert(busWidth >= 64)
   val numFeaturePairs = numWordsPerGroup * numWordsPerGroup
   val numOutputWords = numFeaturePairs * (1 << (2 * wordWidth))
-  val numOutputLines = (numOutputWords * 64 + busWidth - 1) / busWidth
 
-  val zeroMems :: inputLengthAddr :: loadInputLength :: mainLoop :: writeOutput :: finished :: Nil = Enum(6)
+  val zeroMems :: inputLengthAddr :: loadInputLength :: mainLoop :: pause :: writeOutput :: finished :: Nil = Enum(7)
   val state = RegInit(if (simulation) zeroMems else inputLengthAddr) // real FPGA RAMs are 0-initialized
   val zeroMemsCounter = RegInit(0.asUInt(log2Ceil(numOutputWords).W))
   val inputLength = Reg(UInt(32.W))
@@ -38,14 +37,14 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   val inputDataLineCount = RegInit(0.asUInt(32.W))
   val sendingAddr :: fillingLine :: sendingLine :: Nil = Enum(3)
   val outputState = RegInit(sendingAddr)
-  val outputWordCounter = RegInit(0.asUInt(log2Ceil(numOutputWords).W))
+  val outputWordCounter = RegInit(0.asUInt(log2Ceil(numOutputWords + 1).W))
   val outputLine = Reg(Vec(busWidth / 64, UInt(64.W)))
 
 
   val featurePairs = new Array[FeaturePair](numFeaturePairs)
   for (i <- 0 until numWordsPerGroup) {
     for (j <- 0 until numWordsPerGroup) {
-      val linearIndex = i * numOutputWords + j
+      val linearIndex = i * numWordsPerGroup + j
       val featurePair = Module(new FeaturePair(wordWidth, simulation))
       featurePairs(linearIndex) = featurePair
       featurePair.io.inputMetric := io.inputMemBlock(metricWidth - 1, 0)
@@ -69,7 +68,7 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   io.inputMemAddrValid := state === inputLengthAddr || (state === mainLoop && inputAddrLineCount =/= inputLength)
   io.inputMemAddrLen := 0.U
   io.inputMemBlockReady := state === loadInputLength || state === mainLoop
-  io.outputMemAddr := (outputWordCounter >> 3).asUInt() + outputStartAddr.U
+  io.outputMemAddr := (outputWordCounter << 3).asUInt() + outputStartAddr.U
   io.outputMemAddrValid := state === writeOutput && outputState === sendingAddr
   io.outputMemAddrLen := 0.U
   io.outputMemAddrId := 0.U
@@ -107,9 +106,13 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
       when (io.inputMemBlockValid) {
         inputDataLineCount := inputDataLineCount + 1.U
         when (inputDataLineCount === (inputLength - 1.U)) {
-          state := writeOutput
+          state := pause
         }
       }
+    }
+    is (pause) {
+      // required to flush FeaturePair pipeline before shiftMode is set
+      state := writeOutput
     }
     is (writeOutput) {
       for (i <- 0 until numFeaturePairs) {
@@ -133,13 +136,11 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
           when (wordInLine === (busWidth / 64 - 1).U || outputWordCounter === (numOutputWords - 1).U) {
             outputState := sendingLine
           }
-          when (outputWordCounter =/= (numOutputWords - 1).U) {
-            outputWordCounter := outputWordCounter + 1.U
-          }
+          outputWordCounter := outputWordCounter + 1.U
         }
         is (sendingLine) {
           when (io.outputMemBlockReady) {
-            when (outputWordCounter === (numOutputWords - 1).U) {
+            when (outputWordCounter === numOutputWords.U) {
               state := finished
             } .otherwise {
               outputState := sendingAddr

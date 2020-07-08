@@ -8,13 +8,12 @@ class FeaturePair(val wordWidth: Int, val simulation: Boolean) extends Module {
     val inputFeatureTwo = Input(UInt(wordWidth.W))
     val inputMetric = Input(UInt(32.W))
     val inputValid = Input(Bool())
-    val shiftMode = Input(Bool())
+    val shiftMode = Input(Bool()) // one cycle pause required between last inputValid and start of shiftMode
     val doShift = Input(Bool())
     val neighborOutputIn = Input(UInt(64.W))
     val output = Output(UInt(64.W))
   })
 
-  // Must add collision attribute to BRAM for correct synthesis.
   // count in top 32 bits, metric sum in bottom 32 bits
   val bram = instantiateBRAM(64, 2 * wordWidth, clock, simulation)
 
