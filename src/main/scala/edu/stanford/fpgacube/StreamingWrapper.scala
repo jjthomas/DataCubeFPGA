@@ -3,7 +3,7 @@ package edu.stanford.fpgacube
 import chisel3._
 import chisel3.util._
 
-class FeaturePair(val wordWidth: Int) extends Module {
+class FeaturePair(val wordWidth: Int, val simulation: Boolean) extends Module {
   val io = IO(new Bundle {
     val inputFeatureOne = Input(UInt(wordWidth.W))
     val inputFeatureTwo = Input(UInt(wordWidth.W))
@@ -17,32 +17,32 @@ class FeaturePair(val wordWidth: Int) extends Module {
 
   // Must add collision attribute to BRAM for correct synthesis.
   // count in top 32 bits, metric sum in bottom 32 bits
-  val data = Module(new DualPortBRAM(64, 2 * wordWidth))
+  val bram = instantiateBRAM(64, 2 * wordWidth, clock, simulation)
 
   val lastFeatureOne = RegNext(io.inputFeatureOne)
   val lastFeatureTwo = RegNext(io.inputFeatureTwo)
   val lastMetric = RegNext(io.inputMetric)
   val lastInputValid = RegNext(io.inputValid, false.B)
-  data.io.a_addr := io.inputFeatureOne ## io.inputFeatureTwo
-  data.io.b_din := (data.io.a_dout(63, 32) + 1.U) ## (data.io.a_dout(31, 0) + lastMetric)
-  data.io.b_addr := lastFeatureOne ## lastFeatureTwo
-  data.io.b_wr := lastInputValid
+  bram.a_addr := io.inputFeatureOne ## io.inputFeatureTwo
+  bram.b_din := (bram.a_dout(63, 32) + 1.U) ## (bram.a_dout(31, 0) + lastMetric)
+  bram.b_addr := lastFeatureOne ## lastFeatureTwo
+  bram.b_wr := lastInputValid
 
   val outputCounter = RegInit(0.asUInt((2 * wordWidth).W))
   when (io.doShift) {
     outputCounter := outputCounter + 1.U // wraps around
   }
   when (io.shiftMode) {
-    data.io.a_addr := Mux(io.doShift, outputCounter + 1.U, outputCounter)
-    data.io.b_din := io.neighborOutputIn
-    data.io.b_addr := outputCounter
-    data.io.b_wr := io.doShift
+    bram.a_addr := Mux(io.doShift, outputCounter + 1.U, outputCounter)
+    bram.b_din := io.neighborOutputIn
+    bram.b_addr := outputCounter
+    bram.b_wr := io.doShift
   }
-  io.output := data.io.a_dout
+  io.output := bram.a_dout
 }
 
 class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val busWidth: Int, val wordWidth: Int,
-                       val numWordsPerGroup: Int, val metricWidth: Int, val skipZeroMems: Boolean) extends Module {
+                       val numWordsPerGroup: Int, val metricWidth: Int, val simulation: Boolean) extends Module {
   val io = IO(new Bundle {
     val inputMemAddr = Output(UInt(64.W))
     val inputMemAddrValid = Output(Bool())
@@ -69,7 +69,7 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   val numOutputLines = (numOutputWords * 64 + busWidth - 1) / busWidth
 
   val zeroMems :: inputLengthAddr :: loadInputLength :: mainLoop :: writeOutput :: finished :: Nil = Enum(6)
-  val state = RegInit(if (skipZeroMems) inputLengthAddr else zeroMems) // zeroMems not needed if RAMs are 0-initialized
+  val state = RegInit(if (simulation) zeroMems else inputLengthAddr) // real FPGA RAMs are 0-initialized
   val zeroMemsCounter = RegInit(0.asUInt(log2Ceil(numOutputWords).W))
   val inputLength = Reg(UInt(32.W))
   val inputAddrLineCount = RegInit(0.asUInt(32.W))
@@ -84,7 +84,7 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   for (i <- 0 until numWordsPerGroup) {
     for (j <- 0 until numWordsPerGroup) {
       val linearIndex = i * numOutputWords + j
-      val featurePair = Module(new FeaturePair(wordWidth))
+      val featurePair = Module(new FeaturePair(wordWidth, simulation))
       featurePairs(linearIndex) = featurePair
       featurePair.io.inputMetric := io.inputMemBlock(metricWidth - 1, 0)
       featurePair.io.inputFeatureOne :=
@@ -191,5 +191,5 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
 
 object StreamingWrapper extends App {
   chisel3.Driver.execute(args, () => new StreamingWrapper(0, 1000000000, 512,
-    4, 40, 32, true))
+    4, 40, 32, false))
 }
