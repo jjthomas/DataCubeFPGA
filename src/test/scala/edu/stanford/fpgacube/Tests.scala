@@ -5,7 +5,7 @@ import scala.collection.mutable.ArrayBuffer
 
 object Tests {
   val tests = Map(
-    "Summer1" -> { (backendName: String) =>
+    "Test1" -> { (backendName: String) =>
       Driver(() => new StreamingWrapper(0, 1000000000, 8, 4), backendName) {
         (c) => {
           new StreamingWrapperTests(c, (0, BigInt(0)), (0, BigInt(0)))

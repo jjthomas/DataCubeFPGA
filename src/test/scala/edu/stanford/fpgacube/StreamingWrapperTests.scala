@@ -16,19 +16,22 @@ class StreamingWrapperTests(c: StreamingWrapper, input: (Int, BigInt), output: (
       step(1)
     }
     assert(peek(c.io.inputMemAddr).toInt == curInputAddr)
+    val len = peek(c.io.inputMemAddrLen).toInt + 1
+    assert(len <= (inputBitsLeft + c.busWidth - 1) / c.busWidth)
     step(1)
     poke(c.io.inputMemAddrReady, false)
-    poke(c.io.inputMemBlock, inputLeft & ((BigInt(1) << 512) - 1))
     poke(c.io.inputMemBlockValid, true)
-    while (peek(c.io.inputMemBlockReady).toInt == 0) {
+    for (i <- 0 until len) {
+      poke(c.io.inputMemBlock, inputLeft & ((BigInt(1) << c.busWidth) - 1))
+      while (peek(c.io.inputMemBlockReady).toInt == 0) {
+        step(1)
+      }
       step(1)
+      curInputAddr += c.busWidth / 8
+      inputLeft >>= c.busWidth
+      inputBitsLeft -= c.busWidth
     }
-    step(1)
     poke(c.io.inputMemBlockValid, false)
-
-    curInputAddr += 64
-    inputLeft >>= 512
-    inputBitsLeft -= 512
   }
 
   var outputLeft = output._2
@@ -46,15 +49,15 @@ class StreamingWrapperTests(c: StreamingWrapper, input: (Int, BigInt), output: (
     while (peek(c.io.outputMemBlockValid).toInt == 0) {
       step(1)
     }
-    val mask = (BigInt(1) << Math.min(512, outputBitsLeft)) - 1
+    val mask = (BigInt(1) << Math.min(c.busWidth, outputBitsLeft)) - 1
     println("output line: " + (peek(c.io.outputMemBlock) & mask).toString(16))
     assert((peek(c.io.outputMemBlock) & mask) == (outputLeft & mask))
     step(1)
     poke(c.io.outputMemBlockReady, false)
 
-    curOutputAddr += 64
-    outputLeft >>= 512
-    outputBitsLeft -= 512
+    curOutputAddr += c.busWidth / 8
+    outputLeft >>= c.busWidth
+    outputBitsLeft -= c.busWidth
   }
 
   assert(peek(c.io.finished).toInt == 1)
