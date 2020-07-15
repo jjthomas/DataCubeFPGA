@@ -24,13 +24,10 @@ __global__ void run(uint8_t *input, uint8_t group_size, uint32_t num_input_lines
   uint64_t index = blockIdx.x * blockDim.x + threadIdx.x;
   uint32_t first_group_idx = MIN(index / group_size, group_size - 1);
   uint32_t second_group_idx = index % group_size;
-  uint32_t input_line_size = 4 + 2 * group_size; // 32 bits for metric and two groups
-  uint32_t output_size = 256 * 2; // word size of 4 means 256 slots, each with 32 bits for
-  // metric and 32 bits for count
-  uint32_t *our_output = output + index * output_size;
+  uint32_t *our_output = output + index * 512;
   uint8_t *input_ptr = input;
 
-  uint32_t counts[output_size] = {0};
+  uint32_t counts[512] = {0};
 
   for (uint32_t i = 0; i < num_input_lines; i++) {
     uint32_t metric = 0;
@@ -43,29 +40,36 @@ __global__ void run(uint8_t *input, uint8_t group_size, uint32_t num_input_lines
     counts[2 * counts_idx + 1]++;
     input_ptr += 2 * group_size;
   }
-  for (uint32_t i = 0; i < output_size; i++) {
+  for (uint32_t i = 0; i < 512; i++) {
     our_output[i] = counts[i];
   }
 }
 
 int main(int argc, char **argv) {
-  cudaSetDevice(0);
+  assert(cudaSetDevice(0) == cudaSuccess);
 
   uint32_t group_size = sqrt(NUM_THREADS);
-  uint32_t num_lines = 10000000;
+  uint32_t num_lines = 1000000;
   uint32_t input_size = (sizeof(uint32_t) + 2 * sizeof(uint8_t) * group_size) * num_lines;
+  printf("group size: %d, input size: %d\n", group_size, input_size);
   uint8_t *input_dev;
   uint32_t *output_dev;
-  assert(cudaMalloc((void **) &output_dev, 256 * 2 * sizeof(uint32_t) * NUM_THREADS) == cudaSuccess);
+  assert(cudaMalloc((void **) &output_dev, 512 * sizeof(uint32_t) * NUM_THREADS) == cudaSuccess);
   assert(cudaMalloc((void **) &input_dev, input_size) == cudaSuccess);
+  cudaMemset(input_dev, 0, input_size);
 
   struct timeval start, end, diff;
   gettimeofday(&start, 0);
   run<<<NUM_BLOCKS, BLOCK_SIZE>>>(input_dev, group_size, num_lines, output_dev);
-  cudaThreadSynchronize();
+  assert(cudaDeviceSynchronize() == cudaSuccess);
   gettimeofday(&end, 0);
   timersub(&end, &start, &diff);
   double secs = diff.tv_sec + diff.tv_usec / 1000000.0;
-  printf("%.2f MB/s\n", input_size / 1000000.0 / secs);
+
+  uint32_t *output = new uint32_t[512 * NUM_THREADS];
+  cudaMemcpy(output, output_dev, 512 * sizeof(uint32_t) * NUM_THREADS, cudaMemcpyDeviceToHost);
+  double group_correction = pow((double)group_size / 40, 2); // group size on FPGA is only ~40
+  printf("%.2f MB/s, random byte: %d\n", input_size / 1000000.0 / secs * group_correction,
+    output[1]); // output[rand() % (512 * NUM_THREADS)]
   return 0;
 }
