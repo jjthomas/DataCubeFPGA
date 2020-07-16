@@ -22,7 +22,7 @@ using namespace std;
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
-__global__ void run(uint8_t *input, uint8_t group_size, uint32_t num_input_lines, uint32_t *output) {
+__global__ void run(uint8_t *input, uint32_t group_size, uint32_t num_input_lines, uint32_t *output) {
   uint64_t index = blockIdx.x * blockDim.x + threadIdx.x;
   uint32_t first_group_idx = MIN(index / group_size, group_size - 1);
   uint32_t second_group_idx = index % group_size;
@@ -32,10 +32,7 @@ __global__ void run(uint8_t *input, uint8_t group_size, uint32_t num_input_lines
   uint32_t counts[512] = {0};
 
   for (uint32_t i = 0; i < num_input_lines; i++) {
-    uint32_t metric = 0;
-    for (uint32_t j = 0; j < 4; j++) {
-      metric = metric | (input_ptr[j] << (j * 8));
-    }
+    uint32_t metric = *((uint32_t *)input_ptr);
     input_ptr += 4;
     uint8_t counts_idx = input_ptr[first_group_idx] | (input_ptr[group_size + second_group_idx] << 4);
     counts[2 * counts_idx] += metric;
@@ -58,11 +55,11 @@ int main(int argc, char **argv) {
   uint32_t *output_dev;
   assert(cudaMalloc((void **) &output_dev, 512 * sizeof(uint32_t) * NUM_THREADS) == cudaSuccess);
   assert(cudaMalloc((void **) &input_dev, input_size) == cudaSuccess);
+
   curandGenerator_t prng;
   curandCreateGenerator(&prng, CURAND_RNG_PSEUDO_XORWOW);
   curandSetPseudoRandomGeneratorSeed(prng, (unsigned long long) clock());
   curandGenerate(prng, (uint32_t *)input_dev, input_size / 4);
-  // cudaMemset(input_dev, 0, input_size);
 
   struct timeval start, end, diff;
   gettimeofday(&start, 0);
@@ -74,10 +71,12 @@ int main(int argc, char **argv) {
 
   uint32_t *output = new uint32_t[512 * NUM_THREADS];
   cudaMemcpy(output, output_dev, 512 * sizeof(uint32_t) * NUM_THREADS, cudaMemcpyDeviceToHost);
-  double group_correction = pow((double)group_size / 40, 2); // group size on FPGA is only ~40
-  printf("%.2f MB/s (%.2f MB/s), random byte: %d\n",
-    input_size / 1000000.0 / secs,
-    input_size / 1000000.0 / secs * group_correction,
-    output[1]); // output[rand() % (512 * NUM_THREADS)]
+  uint32_t first_total_count = 0;
+  for (int i = 0; i < 256; i++) {
+    first_total_count += output[2 * i + 1];
+  }
+  printf("%.2f pairs/s, first pair total count: %d\n",
+    (double)NUM_THREADS * num_lines / secs, first_total_count);
+
   return 0;
 }
