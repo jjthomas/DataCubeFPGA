@@ -7,6 +7,8 @@
 #include <assert.h>
 #include <math.h>
 
+#include <curand.h>
+
 using namespace std;
 
 #define NUM_SMS 110
@@ -56,7 +58,11 @@ int main(int argc, char **argv) {
   uint32_t *output_dev;
   assert(cudaMalloc((void **) &output_dev, 512 * sizeof(uint32_t) * NUM_THREADS) == cudaSuccess);
   assert(cudaMalloc((void **) &input_dev, input_size) == cudaSuccess);
-  cudaMemset(input_dev, 0, input_size);
+  curandGenerator_t prng;
+  curandCreateGenerator(&prng, CURAND_RNG_PSEUDO_XORWOW);
+  curandSetPseudoRandomGeneratorSeed(prng, (unsigned long long) clock());
+  curandGenerate(prng, (uint32_t *)input_dev, input_size / 4);
+  // cudaMemset(input_dev, 0, input_size);
 
   struct timeval start, end, diff;
   gettimeofday(&start, 0);
@@ -69,7 +75,9 @@ int main(int argc, char **argv) {
   uint32_t *output = new uint32_t[512 * NUM_THREADS];
   cudaMemcpy(output, output_dev, 512 * sizeof(uint32_t) * NUM_THREADS, cudaMemcpyDeviceToHost);
   double group_correction = pow((double)group_size / 40, 2); // group size on FPGA is only ~40
-  printf("%.2f MB/s, random byte: %d\n", input_size / 1000000.0 / secs * group_correction,
+  printf("%.2f MB/s (%.2f MB/s), random byte: %d\n",
+    input_size / 1000000.0 / secs,
+    input_size / 1000000.0 / secs * group_correction,
     output[1]); // output[rand() % (512 * NUM_THREADS)]
   return 0;
 }
