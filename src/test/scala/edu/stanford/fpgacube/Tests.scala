@@ -7,7 +7,7 @@ object Tests {
   val tests = Map(
     "Test1" -> { (backendName: String) =>
       Driver(() => new StreamingWrapper(0, 1000000000, 64, 1,
-        1, 32), backendName) {
+        1, 32, 1), backendName) {
         (c) => {
           // First two input elements are the stream length of 1; next two are the packed line with lower 32 bits metric
           // and upper 32 bits containing the two 1-bit groups in the low two bits.
