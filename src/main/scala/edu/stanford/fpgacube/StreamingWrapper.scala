@@ -44,9 +44,8 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   val featurePairs = new Array[FeaturePair](numFeaturePairs)
   for (i <- 0 until numWordsPerGroup) {
     for (j <- 0 until numWordsPerGroup) {
-      val linearIndex = i * numWordsPerGroup + j
       val featurePair = Module(new FeaturePair(wordWidth, simulation))
-      featurePairs(linearIndex) = featurePair
+      featurePairs(i * numWordsPerGroup + j) = featurePair
       featurePair.io.inputMetric := io.inputMemBlock(metricWidth - 1, 0)
       featurePair.io.inputFeatureOne :=
         io.inputMemBlock((i + 1) * wordWidth - 1 + metricWidth, i * wordWidth + metricWidth)
@@ -54,13 +53,15 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
         io.inputMemBlock((j + 1 + numWordsPerGroup) * wordWidth - 1 + metricWidth,
           (j + numWordsPerGroup) * wordWidth + metricWidth)
       featurePair.io.inputValid := io.inputMemBlockValid && state === mainLoop
-      if (linearIndex == 0) {
-        featurePair.io.neighborOutputIn := 0.U
-      } else {
-        featurePair.io.neighborOutputIn := featurePairs(linearIndex - 1).io.output
-      }
       featurePair.io.shiftMode := state === zeroMems
       featurePair.io.doShift := state === zeroMems
+    }
+  }
+  for (i <- 0 until numFeaturePairs) {
+    if (i == numFeaturePairs - 1) {
+      featurePairs(i).io.neighborOutputIn := 0.U
+    } else {
+      featurePairs(i).io.neighborOutputIn := featurePairs(i + 1).io.output
     }
   }
 
@@ -128,7 +129,7 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
           for (i <- 0 until numFeaturePairs) {
             featurePairs(i).io.doShift := true.B
           }
-          outputLine(busWidth / 64 - 1) := featurePairs(numFeaturePairs - 1).io.output
+          outputLine(busWidth / 64 - 1) := featurePairs(0).io.output
           for (i <- 0 until busWidth / 64 - 1) {
             outputLine(i) := outputLine(i + 1)
           }

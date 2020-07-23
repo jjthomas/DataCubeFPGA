@@ -21,7 +21,7 @@ class DualPortBRAM(dataWidth: Int, addrWidth: Int) extends Module {
   val mem = Mem(1 << addrWidth, UInt(dataWidth.W)) // problem with SyncReadMem is that FIRRTL sim
   // doesn't know that there is a register between read port and output so it errors on combinational cycle
 
-  val regAddrA = RegNext(io.a_addr) // eliminate this if SyncReadMem
+  val regAddrA = RegNext(io.a_addr) // ensures write-first behavior on read-write collisions to match Verilog below
   io.a_dout := mem.read(regAddrA)
 
   when (io.b_wr) {
@@ -49,13 +49,13 @@ class DualPortBRAMBB(dataWidth: Int, addrWidth: Int) extends BlackBox with HasBl
        |  input io_b_wr
        |);
        |  (* rw_addr_collision= "yes" *) reg [$dataHigh:0] mem [0:$arrayHigh];
-       |  reg [$addrHigh:0] reg_a_addr;
-       |  assign io_a_dout = mem[reg_a_addr];
+       |  reg [$dataHigh:0] reg_a_dout;
+       |  assign io_a_dout = reg_a_dout;
        |  always @(posedge clock) begin
        |    if (io_b_wr) begin
        |      mem[io_b_addr] <= io_b_din;
        |    end
-       |    reg_a_addr <= io_a_addr;
+       |    reg_a_dout <= mem[io_a_addr];
        |  end
        |endmodule
      """.stripMargin)
