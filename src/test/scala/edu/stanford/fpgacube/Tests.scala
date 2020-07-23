@@ -7,7 +7,7 @@ object Tests {
   val tests = Map(
     "Test1" -> { (backendName: String) =>
       Driver(() => new StreamingWrapper(0, 1000000000, 64, 1,
-        1, 32, true), backendName) {
+        1, 32), backendName) {
         (c) => {
           // First two input elements are the stream length of 1; next two are the packed line with lower 32 bits metric
           // and upper 32 bits containing the two 1-bit groups in the low two bits.
@@ -20,21 +20,7 @@ object Tests {
     }
   )
   def main(args: Array[String]): Unit = {
-    // Choose the default backend based on what is available.
-    lazy val firrtlTerpBackendAvailable: Boolean = {
-      try {
-        val cls = Class.forName("chisel3.iotesters.FirrtlTerpBackend")
-        cls != null
-      } catch {
-        case e: Throwable => false
-      }
-    }
-    lazy val defaultBackend = if (firrtlTerpBackendAvailable) {
-      "firrtl"
-    } else {
-      ""
-    }
-    val backendName = defaultBackend.split(" ").head
+    val backendName = "verilator"
     val testsToRun = if (args.isEmpty || args.head == "all") {
       tests.keys.toSeq.sorted.toArray
     }
