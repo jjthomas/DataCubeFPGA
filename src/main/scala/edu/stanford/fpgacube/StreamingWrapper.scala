@@ -4,7 +4,8 @@ import chisel3._
 import chisel3.util._
 
 class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val busWidth: Int, val wordWidth: Int,
-                       val numWordsPerGroup: Int, val metricWidth: Int, val pipeDepth: Int) extends Module {
+                       val numWordsPerGroup: Int, val metricWidth: Int, val pipeDepth: Int, val outputPipeDepth: Int)
+  extends Module {
   val io = IO(new Bundle {
     val inputMemAddr = Output(UInt(64.W))
     val inputMemAddrValid = Output(Bool())
@@ -36,14 +37,14 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   val inputDataLineCount = RegInit(0.asUInt(32.W))
   val sendingAddr :: sendingShift :: fillingLine :: sendingLine :: Nil = Enum(4)
   val outputState = RegInit(sendingAddr)
-  val outputShiftCounter = RegInit(0.asUInt(math.max(1, log2Ceil(pipeDepth)).W))
+  val outputShiftCounter = RegInit(0.asUInt(math.max(1, log2Ceil(pipeDepth + outputPipeDepth)).W))
   val outputWordCounter = RegInit(0.asUInt(log2Ceil(numOutputWords + 1).W))
   val outputLine = Reg(Vec(busWidth / 64, UInt(64.W)))
 
   val featurePairs = new Array[FeaturePair](numFeaturePairs)
   for (i <- 0 until numWordsPerGroup) {
     for (j <- 0 until numWordsPerGroup) {
-      val featurePair = Module(new FeaturePair(wordWidth))
+      val featurePair = Module(new FeaturePair(wordWidth, outputPipeDepth))
       featurePairs(i * numWordsPerGroup + j) = featurePair
       featurePair.io.inputMetric := ShiftRegister(io.inputMemBlock(metricWidth - 1, 0), pipeDepth)
       featurePair.io.inputFeatureOne := ShiftRegister(io.inputMemBlock((i + 1) * wordWidth - 1 + metricWidth,
@@ -116,10 +117,10 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
           }
         }
         is (sendingShift) {
-          outputState := fillingLine // pipe depth cannot be 0, otherwise output will be shifted on this cycle
+          outputState := fillingLine // total pipe depth cannot be 0, otherwise output will be shifted on this cycle
         }
         is (fillingLine) {
-          when (outputShiftCounter === (pipeDepth - 1).U) {
+          when (outputShiftCounter === (pipeDepth + outputPipeDepth - 1).U) {
             outputLine(busWidth / 64 - 1) := featurePairs(0).io.output
             for (i <- 0 until busWidth / 64 - 1) {
               outputLine(i) := outputLine(i + 1)
@@ -152,5 +153,5 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
 
 object StreamingWrapper extends App {
   chisel3.Driver.execute(args, () => new StreamingWrapper(0, 1000000000, 512,
-    4, 40, 32, 3))
+    4, 40, 32, 1, 1))
 }

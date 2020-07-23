@@ -1,8 +1,9 @@
 package edu.stanford.fpgacube
 
 import chisel3._
+import chisel3.util._
 
-class FeaturePair(val wordWidth: Int) extends Module {
+class FeaturePair(val wordWidth: Int, val outputPipeDepth: Int) extends Module {
   val io = IO(new Bundle {
     val inputFeatureOne = Input(UInt(wordWidth.W))
     val inputFeatureTwo = Input(UInt(wordWidth.W))
@@ -27,18 +28,20 @@ class FeaturePair(val wordWidth: Int) extends Module {
   bram.b_wr := lastInputValid
 
   val outputCounter = RegInit(0.asUInt((2 * wordWidth).W))
-  when (io.doShift) {
+  // assumes io.doShift signals are not pipelined, otherwise read counter needs to get ahead of write counter
+  val doShift = ShiftRegister(io.doShift, outputPipeDepth, false.B, true.B)
+  when (doShift) {
     outputCounter := outputCounter + 1.U // wraps around
   }
   when (io.shiftMode) {
-    bram.a_addr := Mux(io.doShift, outputCounter + 1.U, outputCounter)
+    bram.a_addr := Mux(doShift, outputCounter + 1.U, outputCounter)
     bram.b_din := io.neighborOutputIn
     bram.b_addr := outputCounter
-    bram.b_wr := io.doShift
+    bram.b_wr := doShift
   }
-  io.output := bram.a_dout
+  io.output := ShiftRegister(bram.a_dout, outputPipeDepth)
 }
 
 object FeaturePair extends App {
-  chisel3.Driver.execute(args, () => new FeaturePair(args(0).toInt))
+  chisel3.Driver.execute(args, () => new FeaturePair(args(0).toInt, 1))
 }
