@@ -44,18 +44,16 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   val featurePairs = new Array[FeaturePair](numFeaturePairs)
   for (i <- 0 until numWordsPerGroup) {
     for (j <- 0 until numWordsPerGroup) {
-      val featurePair = Module(new FeaturePair(wordWidth, outputPipeDepth))
+      val featurePair = Module(new FeaturePair(wordWidth, pipeDepth, outputPipeDepth))
       featurePairs(i * numWordsPerGroup + j) = featurePair
-      featurePair.io.inputMetric := ShiftRegister(io.inputMemBlock(metricWidth - 1, 0), pipeDepth)
-      featurePair.io.inputFeatureOne := ShiftRegister(io.inputMemBlock((i + 1) * wordWidth - 1 + metricWidth,
-        i * wordWidth + metricWidth), pipeDepth)
-      featurePair.io.inputFeatureTwo := ShiftRegister(io.inputMemBlock((j + 1 + numWordsPerGroup) * wordWidth - 1 +
-        metricWidth, (j + numWordsPerGroup) * wordWidth + metricWidth), pipeDepth)
-      featurePair.io.inputValid := ShiftRegister(io.inputMemBlockValid && state === mainLoop, pipeDepth, false.B,
-        true.B)
-      featurePair.io.shiftMode := ShiftRegister(state === writeOutput, pipeDepth, false.B, true.B)
-      featurePair.io.doShift := ShiftRegister(state === writeOutput && outputState === sendingShift, pipeDepth, false.B,
-        true.B)
+      featurePair.io.inputMetric := io.inputMemBlock(metricWidth - 1, 0)
+      featurePair.io.inputFeatureOne := io.inputMemBlock((i + 1) * wordWidth - 1 + metricWidth,
+        i * wordWidth + metricWidth)
+      featurePair.io.inputFeatureTwo := io.inputMemBlock((j + 1 + numWordsPerGroup) * wordWidth - 1 + metricWidth,
+        (j + numWordsPerGroup) * wordWidth + metricWidth)
+      featurePair.io.inputValid := io.inputMemBlockValid && state === mainLoop
+      featurePair.io.shiftMode := state === writeOutput
+      featurePair.io.doShift := state === writeOutput && outputState === sendingShift
     }
   }
   for (i <- 0 until numFeaturePairs) {
