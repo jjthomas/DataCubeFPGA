@@ -48,19 +48,19 @@ class DualPortBRAMBB(dataWidth: Int, addrWidth: Int) extends BlackBox with HasBl
        |  input [$dataHigh:0] io_b_din,
        |  input io_b_wr
        |);
-       |  (* rw_addr_collision= "yes" *) reg [$dataHigh:0] mem [0:$arrayHigh];
+       |  reg [$dataHigh:0] mem [0:$arrayHigh];
        |  integer i;
        |  initial begin
        |    for (i = 0; i <= $arrayHigh; i = i + 1)
        |      mem[i] = 0;
        |  end
-       |  reg [$dataHigh:0] reg_a_dout;
-       |  assign io_a_dout = reg_a_dout;
+       |  reg [$addrHigh:0] reg_a_addr;
+       |  assign io_a_dout = mem[reg_a_addr];
        |  always @(posedge clock) begin
        |    if (io_b_wr) begin
        |      mem[io_b_addr] <= io_b_din;
        |    end
-       |    reg_a_dout <= mem[io_a_addr];
+       |    reg_a_addr <= io_a_addr;
        |  end
        |endmodule
      """.stripMargin)
