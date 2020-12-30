@@ -2,7 +2,7 @@ package edu.stanford.fpgacube
 
 import chisel3._
 
-class FeaturePair(wordWidth: Int, metricWidth: Int) extends Module {
+class FeaturePair(wordWidth: Int, metricWidth: Int, idx: Int) extends Module {
   val io = IO(new Bundle {
     val inputFeatureOne = Input(UInt(wordWidth.W))
     val inputFeatureTwo = Input(UInt(wordWidth.W))
@@ -15,7 +15,7 @@ class FeaturePair(wordWidth: Int, metricWidth: Int) extends Module {
   })
 
   // count in top 32 bits, metric sum in bottom 32 bits
-  val bram = instantiateBRAM(64, 2 * wordWidth, clock, false)
+  val bram = instantiateRAM(64, 2 * wordWidth, idx, clock, false)
 
   val lastFeatureOne = RegNext(io.inputFeatureOne)
   val lastFeatureTwo = RegNext(io.inputFeatureTwo)
@@ -40,5 +40,5 @@ class FeaturePair(wordWidth: Int, metricWidth: Int) extends Module {
 }
 
 object FeaturePair extends App {
-  chisel3.Driver.execute(args, () => new FeaturePair(args(0).toInt, args(1).toInt))
+  chisel3.Driver.execute(args, () => new FeaturePair(args(0).toInt, args(1).toInt, 0))
 }

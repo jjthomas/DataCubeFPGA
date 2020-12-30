@@ -48,8 +48,9 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   val featurePairs = new Array[FeaturePair](numFeaturePairs)
   for (i <- 0 until numWordsPerGroup) {
     for (j <- 0 until numWordsPerGroup) {
-      val featurePair = Module(new FeaturePair(wordWidth, metricWidth))
-      featurePairs(i * numWordsPerGroup + j) = featurePair
+      val idx = i * numWordsPerGroup + j
+      val featurePair = Module(new FeaturePair(wordWidth, metricWidth, idx))
+      featurePairs(idx) = featurePair
       featurePair.io.inputMetric := io.inputMemBlock(metricWidth - 1, 0)
       featurePair.io.inputFeatureOne :=
         io.inputMemBlock((i + 1) * wordWidth - 1 + metricWidth, i * wordWidth + metricWidth)
