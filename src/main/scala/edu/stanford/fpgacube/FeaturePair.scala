@@ -2,11 +2,11 @@ package edu.stanford.fpgacube
 
 import chisel3._
 
-class FeaturePair(val wordWidth: Int) extends Module {
+class FeaturePair(wordWidth: Int, metricWidth: Int) extends Module {
   val io = IO(new Bundle {
     val inputFeatureOne = Input(UInt(wordWidth.W))
     val inputFeatureTwo = Input(UInt(wordWidth.W))
-    val inputMetric = Input(UInt(32.W))
+    val inputMetric = Input(UInt(metricWidth.W))
     val inputValid = Input(Bool())
     val shiftMode = Input(Bool()) // one cycle pause required between last inputValid and start of shiftMode
     val doShift = Input(Bool())
@@ -40,5 +40,5 @@ class FeaturePair(val wordWidth: Int) extends Module {
 }
 
 object FeaturePair extends App {
-  chisel3.Driver.execute(args, () => new FeaturePair(args(0).toInt))
+  chisel3.Driver.execute(args, () => new FeaturePair(args(0).toInt, args(1).toInt))
 }

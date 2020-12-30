@@ -48,7 +48,7 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   val featurePairs = new Array[FeaturePair](numFeaturePairs)
   for (i <- 0 until numWordsPerGroup) {
     for (j <- 0 until numWordsPerGroup) {
-      val featurePair = Module(new FeaturePair(wordWidth))
+      val featurePair = Module(new FeaturePair(wordWidth, metricWidth))
       featurePairs(i * numWordsPerGroup + j) = featurePair
       featurePair.io.inputMetric := io.inputMemBlock(metricWidth - 1, 0)
       featurePair.io.inputFeatureOne :=
@@ -147,5 +147,5 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
 
 object StreamingWrapper extends App {
   chisel3.Driver.execute(args, () => new StreamingWrapper(0, 1000000000, 512,
-    4, 40, 32))
+    4, 40, 8))
 }
