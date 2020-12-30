@@ -27,7 +27,12 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
 
   assert(busWidth >= 64)
   val numFeaturePairs = numWordsPerGroup * numWordsPerGroup
-  val numOutputWords = numFeaturePairs * (1 << (2 * wordWidth))
+  val outputWordsInLine = busWidth / 64
+  var numOutputWords = numFeaturePairs * (1 << (2 * wordWidth))
+  // round up to nearest full line
+  numOutputWords = (numOutputWords + outputWordsInLine - 1) / outputWordsInLine *
+    outputWordsInLine
+  val bytesInLine = busWidth / 8
 
   val inputLengthAddr :: loadInputLength :: mainLoop :: pause :: writeOutput :: finished :: Nil = Enum(6)
   val state = RegInit(inputLengthAddr)
@@ -37,7 +42,7 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   val sendingAddr :: fillingLine :: sendingLine :: Nil = Enum(3)
   val outputState = RegInit(sendingAddr)
   val outputWordCounter = RegInit(0.asUInt(log2Ceil(numOutputWords + 1).W))
-  val outputLine = Reg(Vec(busWidth / 64, UInt(64.W)))
+  val outputLine = Reg(Vec(outputWordsInLine, UInt(64.W)))
 
 
   val featurePairs = new Array[FeaturePair](numFeaturePairs)
@@ -89,8 +94,8 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
       }
     }
     is (mainLoop) {
-      io.inputMemAddr := (inputAddrLineCount << log2Ceil(busWidth / 8)).asUInt() +
-        (inputStartAddr + busWidth / 8).U // final term is start offset of main data stream
+      io.inputMemAddr := (inputAddrLineCount << log2Ceil(bytesInLine)).asUInt() +
+        (inputStartAddr + bytesInLine).U // final term is start offset of main data stream
       val remainingAddrLines = WireInit(inputLength - inputAddrLineCount)
       io.inputMemAddrLen := Mux(remainingAddrLines > 63.U, 63.U, remainingAddrLines - 1.U)
       when (io.inputMemAddrReady) {
@@ -115,12 +120,13 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
           }
         }
         is (fillingLine) {
-          outputLine(busWidth / 64 - 1) := featurePairs(0).io.output
-          for (i <- 0 until busWidth / 64 - 1) {
+          outputLine(outputWordsInLine - 1) := featurePairs(0).io.output
+          for (i <- 0 until outputWordsInLine - 1) {
             outputLine(i) := outputLine(i + 1)
           }
-          val wordInLine = if (busWidth == 64) 0.U else outputWordCounter(log2Ceil(busWidth / 64) - 1, 0)
-          when (wordInLine === (busWidth / 64 - 1).U || outputWordCounter === (numOutputWords - 1).U) {
+          val wordInLine = if (outputWordsInLine == 1) 0.U else
+            outputWordCounter(log2Ceil(outputWordsInLine) - 1, 0)
+          when (wordInLine === (outputWordsInLine - 1).U) {
             outputState := sendingLine
           }
           outputWordCounter := outputWordCounter + 1.U
