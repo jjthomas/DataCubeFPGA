@@ -15,14 +15,22 @@ class FeaturePair(wordWidth: Int, metricWidth: Int, idx: Int) extends Module {
   })
 
   // count in top 32 bits, metric sum in bottom 32 bits
-  val bram = instantiateRAM(64, 2 * wordWidth, idx, clock, false)
+  val bram = instantiateRAM(64, 2 * wordWidth, clock, false)
 
   val lastFeatureOne = RegNext(io.inputFeatureOne)
   val lastFeatureTwo = RegNext(io.inputFeatureTwo)
   val lastMetric = RegNext(io.inputMetric)
   val lastInputValid = RegNext(io.inputValid, false.B)
   bram.a_addr := io.inputFeatureOne ## io.inputFeatureTwo
-  bram.b_din := (bram.a_dout(63, 32) + 1.U) ## (bram.a_dout(31, 0) + lastMetric)
+  val readData =
+    if (idx >= 800 && idx < 2479) { // BRAM
+      val lastWrite = RegNext(bram.b_din)
+      val collision = RegNext((bram.a_addr === bram.b_addr) && bram.b_wr)
+      Mux(collision, lastWrite, bram.a_dout)
+    } else {
+      bram.a_dout
+    }
+  bram.b_din := (readData(63, 32) + 1.U) ## (readData(31, 0) + lastMetric)
   bram.b_addr := lastFeatureOne ## lastFeatureTwo
   bram.b_wr := lastInputValid
 
