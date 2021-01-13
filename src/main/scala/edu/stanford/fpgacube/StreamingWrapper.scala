@@ -147,6 +147,7 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
 }
 
 object StreamingWrapper extends App {
+  // TODO outputStartAddr can be safely made 0
   chisel3.Driver.execute(args, () => new StreamingWrapper(0, 1000000000, 512,
-    4, 48, 8))
+    4, args(0).toInt, 8))
 }
