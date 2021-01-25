@@ -16,7 +16,7 @@ You will need a computer with Vivado 2018.2 on the PATH and around
 30 GB or more of memory. EC2 instances running Centos FPGA AMI
 versions around 1.4.6 will work.
 
-Get the `minimal_single_ddr` branch of https://github.com/jjthomas/aws-fpga.
+Get the `minimal_single_ddr_db` branch of https://github.com/jjthomas/aws-fpga.
 Source hdk_setup.sh and set environment variable `CL_DIR` to `<path to aws-fpga>/hdk/cl/examples/cl_dram_dma`.
 
 Install sbt. Then run ./build.sh N, with N being the parameter mentioned above.
@@ -24,7 +24,7 @@ N=48 is the design used by the current version of the software.
 
 You can then build the design by running
 `./aws_build_dcp_from_cl_main.sh -strategy TIMING -monolithic_flow` from
-`$CL_DIR/build/scripts`.
+`$CL_DIR/build/scripts`. (`-strategy CONGESTION` may work better for large designs.)
 If this finishes successfully, you can copy the final
 checkpoint from the `build/checkpoints` dir to `build/to_aws/000000.SH_CL_routed.dcp`
 and then run `./aws_build_dcp_from_cl_zip_only.sh` in the scripts
