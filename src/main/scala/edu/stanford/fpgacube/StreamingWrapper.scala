@@ -51,12 +51,13 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
       val idx = i * numWordsPerGroup + j
       val featurePair = Module(new FeaturePair(wordWidth, metricWidth, idx))
       featurePairs(idx) = featurePair
-      featurePair.io.inputMetric := io.inputMemBlock(metricWidth - 1, 0)
+      featurePair.io.inputMetric := io.inputMemBlock(2 * numWordsPerGroup * wordWidth + metricWidth - 1,
+        2 * numWordsPerGroup * wordWidth)
       featurePair.io.inputFeatureOne :=
-        io.inputMemBlock((i + 1) * wordWidth - 1 + metricWidth, i * wordWidth + metricWidth)
+        io.inputMemBlock((i + 1) * wordWidth - 1, i * wordWidth)
       featurePair.io.inputFeatureTwo :=
-        io.inputMemBlock((j + 1 + numWordsPerGroup) * wordWidth - 1 + metricWidth,
-          (j + numWordsPerGroup) * wordWidth + metricWidth)
+        io.inputMemBlock((j + 1 + numWordsPerGroup) * wordWidth - 1,
+          (j + numWordsPerGroup) * wordWidth)
       featurePair.io.inputValid := io.inputMemBlockValid && state === mainLoop
       featurePair.io.shiftMode := state === writeOutput
       featurePair.io.doShift := state === writeOutput && outputState === fillingLine
@@ -147,7 +148,6 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
 }
 
 object StreamingWrapper extends App {
-  // TODO outputStartAddr can be safely made 0
-  chisel3.Driver.execute(args, () => new StreamingWrapper(0, 1000000000, 512,
+  chisel3.Driver.execute(args, () => new StreamingWrapper(0, 0, 512,
     4, args(0).toInt, 8))
 }
