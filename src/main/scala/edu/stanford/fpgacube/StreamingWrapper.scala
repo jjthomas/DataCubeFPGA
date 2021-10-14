@@ -37,8 +37,10 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   val inputLengthAddr :: loadInputLength :: mainLoop :: pause :: writeOutput :: finished :: Nil = Enum(6)
   val state = RegInit(inputLengthAddr)
   val inputLength = Reg(UInt(32.W))
+  val inputLines = Wire(UInt(32.W))
+  inputLines := (inputLength + 1.U) >> 1
   val inputAddrLineCount = RegInit(0.asUInt(32.W))
-  val inputDataLineCount = RegInit(0.asUInt(32.W))
+  val inputRowCount = RegInit(0.asUInt(32.W))
   val secondBatch = RegInit(false.B)
   val sendingAddr :: fillingLine :: sendingLine :: Nil = Enum(3)
   val outputState = RegInit(sendingAddr)
@@ -79,7 +81,7 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
   }
 
   io.inputMemAddr := inputStartAddr.U
-  io.inputMemAddrValid := (state === inputLengthAddr || (state === mainLoop && inputAddrLineCount =/= inputLength)) &&
+  io.inputMemAddrValid := (state === inputLengthAddr || (state === mainLoop && inputAddrLineCount =/= inputLines)) &&
     io.inputMemAddrReady(0) && io.inputMemAddrReady(1) // TODO valid depends on ready
   io.inputMemAddrLen := 0.U
   io.inputMemBlockReady := secondBatch
@@ -112,14 +114,14 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
     is (mainLoop) {
       io.inputMemAddr := (inputAddrLineCount << log2Ceil(bytesInLine)).asUInt() +
         (inputStartAddr + bytesInLine).U // final term is start offset of main data stream
-      val remainingAddrLines = WireInit(inputLength - inputAddrLineCount)
+      val remainingAddrLines = WireInit(inputLines - inputAddrLineCount)
       io.inputMemAddrLen := Mux(remainingAddrLines > 63.U, 63.U, remainingAddrLines - 1.U)
       when (io.inputMemAddrValid) {
-        inputAddrLineCount := Mux(remainingAddrLines > 63.U, inputAddrLineCount + 64.U, inputLength)
+        inputAddrLineCount := Mux(remainingAddrLines > 63.U, inputAddrLineCount + 64.U, inputLines)
       }
       when (io.inputMemBlockValid(0) && io.inputMemBlockValid(1)) {
-        inputDataLineCount := inputDataLineCount + 1.U
-        when (inputDataLineCount === (inputLength - 1.U)) {
+        inputRowCount := inputRowCount + 1.U
+        when (inputRowCount === (inputLength - 1.U)) {
           state := pause
         }
       }
