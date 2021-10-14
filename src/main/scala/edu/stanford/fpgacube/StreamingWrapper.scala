@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 
 class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val busWidth: Int, val wordWidth: Int,
-                       val numWordsPerGroup: Int, val metricWidth: Int) extends Module {
+                       val numWordsPerGroup: Int, val groupSpace: Int, val metricWidth: Int) extends Module {
   val io = IO(new Bundle {
     val inputMemAddr = Output(UInt(64.W))
     val inputMemAddrValid = Output(Bool())
@@ -54,18 +54,18 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
       val idx = i * numWordsPerGroup + j
       val featurePair = Module(new FeaturePair(wordWidth, metricWidth, idx))
       featurePairs(idx) = featurePair
-      val metricBase = 2 * numWordsPerGroup * wordWidth
+      val metricBase = 2 * groupSpace * wordWidth
       featurePair.io.inputMetric :=
         Mux(secondBatch,
           io.inputMemBlock(0)(metricBase + 2 * metricWidth - 1, metricBase + metricWidth),
           io.inputMemBlock(0)(metricBase + metricWidth - 1, metricBase))
       featurePair.io.inputFeatureOne :=
         Mux(secondBatch,
-          io.inputMemBlock(0)((i + 1 + numWordsPerGroup) * wordWidth - 1, (i + numWordsPerGroup) * wordWidth),
+          io.inputMemBlock(0)((i + 1 + groupSpace) * wordWidth - 1, (i + groupSpace) * wordWidth),
           io.inputMemBlock(0)((i + 1) * wordWidth - 1, i * wordWidth))
       featurePair.io.inputFeatureTwo :=
         Mux(secondBatch,
-          io.inputMemBlock(1)((j + 1 + numWordsPerGroup) * wordWidth - 1, (j + numWordsPerGroup) * wordWidth),
+          io.inputMemBlock(1)((j + 1 + groupSpace) * wordWidth - 1, (j + groupSpace) * wordWidth),
           io.inputMemBlock(1)((j + 1) * wordWidth - 1, j * wordWidth))
       featurePair.io.inputValid := io.inputMemBlockValid(0) && io.inputMemBlockValid(1) && state === mainLoop
       featurePair.io.shiftMode := state === writeOutput
@@ -165,5 +165,5 @@ class StreamingWrapper(val inputStartAddr: Int, val outputStartAddr: Int, val bu
 
 object StreamingWrapper extends App {
   chisel3.Driver.execute(args, () => new StreamingWrapper(0, 0, 512,
-    4, args(0).toInt, 8))
+    4, args(0).toInt, 48, 8))
 }
