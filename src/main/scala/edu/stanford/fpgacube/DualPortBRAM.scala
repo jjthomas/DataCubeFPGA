@@ -1,6 +1,7 @@
 package edu.stanford.fpgacube
 
 import chisel3._
+import chisel3.core.IntParam
 import chisel3.util._
 
 // a is read port, b is write port
@@ -26,32 +27,30 @@ class DualPortRAMSim(dataWidth: Int, addrWidth: Int) extends Module {
   }
 }
 
-class DualPortRAMBB(dataWidth: Int, addrWidth: Int) extends BlackBox with HasBlackBoxInline {
+class DualPortRAMBB(dataWidth: Int, addrWidth: Int) extends
+  BlackBox(Map("DATA" -> IntParam(dataWidth), "ADDR" -> IntParam(addrWidth))) with HasBlackBoxInline {
   val io = IO(new Bundle {
     val clock = Input(Clock())
     val io = new DualPortRAMIO(dataWidth, addrWidth)
   })
 
-  val addrHigh = addrWidth - 1
-  val arrayHigh = (1 << addrWidth) - 1
-  val dataHigh = dataWidth - 1
   setInline("DualPortRAMBB.v",
     s"""
-       |module DualPortRAMBB(
+       |module DualPortRAMBB #(parameter DATA=64, parameter ADDR=8) (
        |  input clock,
-       |  input [$addrHigh:0] io_a_addr,
-       |  output [$dataHigh:0] io_a_dout,
-       |  input [$addrHigh:0] io_b_addr,
-       |  input [$dataHigh:0] io_b_din,
+       |  input [ADDR-1:0] io_a_addr,
+       |  output [DATA-1:0] io_a_dout,
+       |  input [ADDR-1:0] io_b_addr,
+       |  input [DATA-1:0] io_b_din,
        |  input io_b_wr
        |);
-       |  reg [$dataHigh:0] mem [0:$arrayHigh];
+       |  reg [DATA-1:0] mem [0:(2**ADDR)-1];
        |  integer i;
        |  initial begin
-       |    for (i = 0; i <= $arrayHigh; i = i + 1)
+       |    for (i = 0; i <= (2**ADDR)-1; i = i + 1)
        |      mem[i] = 0;
        |  end
-       |  reg [$addrHigh:0] reg_a_addr;
+       |  reg [ADDR-1:0] reg_a_addr;
        |  assign io_a_dout = mem[reg_a_addr];
        |  always @(posedge clock) begin
        |    if (io_b_wr) begin

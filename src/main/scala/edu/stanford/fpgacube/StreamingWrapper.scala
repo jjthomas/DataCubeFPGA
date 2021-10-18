@@ -101,7 +101,7 @@ class StreamingWrapper(val busWidth: Int, val wordWidth: Int, val numWordsPerGro
 
   def select(buffers: Array[DualPortRAMIO], upper: Int, lower: Int): UInt = {
     val buf = upper / 64
-    assert (buf == lower / 64) // must be in same buf
+    assert(buf == lower / 64) // must be in same buf
     buffers(buf).a_dout(upper % 64, lower % 64)
   }
   val featurePairs = new Array[FeaturePair](numFeaturePairs)
