@@ -58,16 +58,18 @@ class StreamingWrapper(val busWidth: Int, val wordWidth: Int, val numWordsPerGro
   val firstBuffers = new Array[DualPortRAMIO](bufsPerLine)
   val secondBuffers = new Array[DualPortRAMIO](bufsPerLine)
   val bufHead = RegInit(0.asUInt(log2Ceil(bufSize).W))
+  val nextBufHead = WireInit(bufHead)
+  bufHead := nextBufHead
   val firstBufTail = RegInit(0.asUInt(log2Ceil(bufSize).W))
-  val firstBufEmtpyPrev = RegNext(bufHead === firstBufTail)
+  val firstBufEmtpyPrev = RegNext(nextBufHead === firstBufTail)
   val secondBufTail = RegInit(0.asUInt(log2Ceil(bufSize).W))
-  val secondBufEmtpyPrev = RegNext(bufHead === secondBufTail)
+  val secondBufEmtpyPrev = RegNext(nextBufHead === secondBufTail)
   val bufWrite = WireInit(io.inputMemBlockValid && state === mainLoop)
   for (i <- 0 until firstBuffers.size) {
     firstBuffers(i) = instantiateRAM(64, log2Ceil(bufSize), clock, false)
     secondBuffers(i) = instantiateRAM(64, log2Ceil(bufSize), clock, false)
-    firstBuffers(i).a_addr := bufHead
-    secondBuffers(i).a_addr := bufHead
+    firstBuffers(i).a_addr := nextBufHead
+    secondBuffers(i).a_addr := nextBufHead
     firstBuffers(i).b_addr := firstBufTail
     secondBuffers(i).b_addr := secondBufTail
     firstBuffers(i).b_din := io.inputMemBlock((i + 1) * 64 - 1, i * 64)
@@ -81,7 +83,7 @@ class StreamingWrapper(val busWidth: Int, val wordWidth: Int, val numWordsPerGro
     secondBatch := !secondBatch
   }
   when (bufValid && secondBatch) {
-    bufHead := bufHead + 1.U
+    nextBufHead := bufHead + 1.U
   }
   when (bufWrite) {
     when (secondGroupDataFetch) {

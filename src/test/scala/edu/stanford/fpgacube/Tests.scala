@@ -19,6 +19,15 @@ object Tests {
             Util.arrToBits(Array(0, 0, 0, 0, 0, 0, 1, 1), 32))
         }
       }
+    },
+    "Test2" -> { (backendName: String) =>
+      Driver(() => new StreamingWrapper(64, 1, 1, 1, 8),
+        backendName) {
+        (c) => {
+          new StreamingWrapperTests(c, Util.arrToBits(Array(4, 7, 3), 64), Util.arrToBits(Array(4, 7, 3), 64),
+            Util.arrToBits(Array(0, 0, 0, 0, 0, 0, 1, 4), 32))
+        }
+      }
     }
   )
   def main(args: Array[String]): Unit = {
