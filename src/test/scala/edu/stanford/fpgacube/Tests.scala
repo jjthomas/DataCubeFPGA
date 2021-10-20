@@ -28,6 +28,24 @@ object Tests {
             Util.arrToBits(Array(0, 0, 0, 0, 0, 0, 1, 4), 32))
         }
       }
+    },
+    "Test3" -> { (backendName: String) =>
+      Driver(() => new StreamingWrapper(64, 1, 1, 1, 8),
+        backendName) {
+        (c) => {
+          val rows = 500 // should be less than ~500 to make sure i in the below loop is 8 bits or less
+          val lines = (rows + 1) / 2
+          var expectedSum = 0
+          val inputArr = new Array[Int](lines + 1)
+          inputArr(0) = rows
+          for (i <- 0 until lines) {
+            inputArr(i + 1) = (i << 2) | 3
+            expectedSum += i
+          }
+          new StreamingWrapperTests(c, Util.arrToBits(inputArr, 64), Util.arrToBits(inputArr, 64),
+            Util.arrToBits(Array(0, 0, 0, 0, 0, 0, expectedSum, rows), 32))
+        }
+      }
     }
   )
   def main(args: Array[String]): Unit = {
